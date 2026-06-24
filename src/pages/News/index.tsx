@@ -1,28 +1,71 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Calendar, Clock, Tag, ArrowRight } from 'lucide-react';
-import { newsArticles } from '@/data/news';
+import { Search, Calendar, Clock, ArrowRight, Loader2 } from 'lucide-react';
 import PageBanner from '@/components/layout/PageBanner';
 import { EmptyState } from '@/components/shared/StateComponents';
 import { formatDateShort } from '@/utils';
+import { newsApi, type ApiNews } from '@/services/publicApi';
 
-const categories = ['All', 'Company News', 'Compliance', 'Business', 'Events', 'Technology', 'Sustainability'];
+// Fallback
+import { newsArticles as staticArticles } from '@/data/news';
+
+const NEWS_CATEGORIES = ['All', 'Company News', 'Compliance', 'Business', 'Events', 'Technology', 'Sustainability'];
 
 export default function NewsPage() {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
+  const [apiArticles, setApiArticles] = useState<ApiNews[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [usingStatic, setUsingStatic] = useState(false);
 
-  const filtered = newsArticles.filter((a) => {
-    const matchesSearch =
-      !search ||
-      a.title.toLowerCase().includes(search.toLowerCase()) ||
-      a.excerpt.toLowerCase().includes(search.toLowerCase());
+  useEffect(() => {
+    newsApi.getAll({ limit: 100, status: 'published' })
+      .then((res) => setApiArticles(res.data.data))
+      .catch(() => setUsingStatic(true))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Normalise data shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const articles: any[] = usingStatic
+    ? staticArticles
+    : apiArticles.map((a) => ({
+        id: a._id,
+        slug: a.slug,
+        title: a.title,
+        excerpt: a.excerpt,
+        category: a.category,
+        author: a.author?.name ?? 'MediSource',
+        authorRole: '',
+        authorImage: a.author?.avatar?.url ?? '',
+        image: a.coverImage?.url ?? `https://picsum.photos/seed/${a._id}/600/400`,
+        tags: a.tags ?? [],
+        featured: a.featured,
+        publishedAt: a.publishedAt ?? a.createdAt,
+        readingTime: a.readingTime ?? 3,
+        views: a.views ?? 0,
+      }));
+
+  const featured = articles.find((a) => a.featured);
+
+  const filtered = useMemo(() => articles.filter((a) => {
+    const matchesSearch = !search || a.title.toLowerCase().includes(search.toLowerCase()) || a.excerpt.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = activeCategory === 'All' || a.category === activeCategory;
     return matchesSearch && matchesCategory;
-  });
+  }), [search, activeCategory, articles]);
 
-  const featured = newsArticles.find((a) => a.featured);
+  if (loading) {
+    return (
+      <>
+        <title>News & Events — MediSource Global</title>
+        <PageBanner title="News & Events" subtitle="Latest updates from MediSource Global." breadcrumbs={[{ label: 'News' }]} />
+        <div className="flex items-center justify-center py-32">
+          <Loader2 size={36} className="animate-spin text-primary-600" />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -37,29 +80,19 @@ export default function NewsPage() {
         <div className="container-custom">
           {/* Featured Article */}
           {featured && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-12"
-            >
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
               <Link
                 to={`/news/${featured.slug}`}
                 className="group grid grid-cols-1 lg:grid-cols-2 gap-0 card overflow-hidden hover:-translate-y-1 transition-all duration-300 block"
               >
                 <div className="relative h-64 lg:h-auto overflow-hidden">
-                  <img
-                    src={featured.image}
-                    alt={featured.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
+                  <img src={featured.image} alt={featured.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   <div className="absolute top-4 left-4">
                     <span className="badge bg-primary-600 text-white">Featured</span>
                   </div>
                 </div>
                 <div className="p-8 flex flex-col justify-center">
-                  <span className="badge bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400 w-fit mb-4">
-                    {featured.category}
-                  </span>
+                  <span className="badge bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400 w-fit mb-4">{featured.category}</span>
                   <h2 className="font-heading font-bold text-2xl text-gray-900 dark:text-white leading-snug mb-3 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                     {featured.title}
                   </h2>
@@ -68,13 +101,15 @@ export default function NewsPage() {
                     <span className="flex items-center gap-1"><Calendar size={12} /> {formatDateShort(featured.publishedAt)}</span>
                     <span className="flex items-center gap-1"><Clock size={12} /> {featured.readingTime} min read</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <img src={featured.authorImage} alt={featured.author} className="w-8 h-8 rounded-full object-cover" />
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{featured.author}</p>
-                      <p className="text-xs text-gray-400">{featured.authorRole}</p>
+                  {featured.author && (
+                    <div className="flex items-center gap-2">
+                      {featured.authorImage && <img src={featured.authorImage} alt={featured.author} className="w-8 h-8 rounded-full object-cover" />}
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{featured.author}</p>
+                        {featured.authorRole && <p className="text-xs text-gray-400">{featured.authorRole}</p>}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </Link>
             </motion.div>
@@ -93,14 +128,12 @@ export default function NewsPage() {
               />
             </div>
             <div className="flex gap-2 flex-wrap">
-              {categories.map((cat) => (
+              {NEWS_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
                   className={`px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200 whitespace-nowrap ${
-                    activeCategory === cat
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-primary-50 hover:text-primary-600'
+                    activeCategory === cat ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-primary-50 hover:text-primary-600'
                   }`}
                 >
                   {cat}
@@ -123,11 +156,7 @@ export default function NewsPage() {
                   className="card group hover:-translate-y-1 transition-all duration-300"
                 >
                   <div className="relative h-48 overflow-hidden">
-                    <img
-                      src={article.image}
-                      alt={article.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                    <img src={article.image} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     <div className="absolute top-3 left-3">
                       <span className="badge bg-primary-600 text-white text-xs">{article.category}</span>
                     </div>
@@ -143,7 +172,7 @@ export default function NewsPage() {
                     <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-4 line-clamp-3">{article.excerpt}</p>
                     <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-800">
                       <div className="flex items-center gap-2">
-                        <img src={article.authorImage} alt={article.author} className="w-6 h-6 rounded-full object-cover" />
+                        {article.authorImage && <img src={article.authorImage} alt={article.author} className="w-6 h-6 rounded-full object-cover" />}
                         <span className="text-xs text-gray-500 font-medium">{article.author}</span>
                       </div>
                       <Link to={`/news/${article.slug}`} className="text-primary-600 dark:text-primary-400 text-xs font-semibold flex items-center gap-1 hover:gap-2 transition-all">

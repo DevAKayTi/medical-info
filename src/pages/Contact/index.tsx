@@ -5,6 +5,7 @@ import { contactInfo } from '@/data/misc';
 import PageBanner from '@/components/layout/PageBanner';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { isValidEmail, isValidPhone } from '@/utils';
+import { contactApi } from '@/services/publicApi';
 import type { ContactFormData } from '@/types';
 
 const initialForm: ContactFormData = {
@@ -44,6 +45,7 @@ export default function ContactPage() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -58,15 +60,26 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs = validate(form);
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs);
-      return;
-    }
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setLoading(true);
-    // Simulate API call
-    await new Promise((r) => setTimeout(r, 1500));
-    setLoading(false);
-    setSubmitted(true);
+    setApiError(null);
+    try {
+      await contactApi.submit({
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone || undefined,
+        company: form.company || undefined,
+        subject: form.subject,
+        message: form.message,
+      });
+      setSubmitted(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to send. Please try again.';
+      setApiError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -305,6 +318,13 @@ export default function ContactPage() {
                         )}
                         <p className="text-xs text-gray-400 mt-1">{form.message.length} / 500 characters</p>
                       </div>
+
+                      {apiError && (
+                        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-sm text-red-600 dark:text-red-400">
+                          <AlertCircle size={16} />
+                          {apiError}
+                        </div>
+                      )}
 
                       <button
                         type="submit"

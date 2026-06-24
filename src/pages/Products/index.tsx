@@ -1,11 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Filter, X, CheckCircle, Tag, ArrowRight } from 'lucide-react';
+import { Search, X, CheckCircle, Tag, ArrowRight, Loader2 } from 'lucide-react';
 import PageBanner from '@/components/layout/PageBanner';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { EmptyState } from '@/components/shared/StateComponents';
-import { products, productCategories } from '@/data/products';
+import { productsApi, type ApiProduct, type ApiCategory } from '@/services/publicApi';
+
+// Fallback static data in case API is unreachable
+import { products as staticProducts, productCategories as staticCategories } from '@/data/products';
 
 export default function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -15,6 +18,52 @@ export default function ProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [inStockOnly, setInStockOnly] = useState(false);
 
+  // API state
+  const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
+  const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [usingStaticData, setUsingStaticData] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [prodRes, catRes] = await Promise.all([
+          productsApi.getAll({ limit: 200, status: 'active' }),
+          productsApi.getCategories(),
+        ]);
+        setApiProducts(prodRes.data.data);
+        setApiCategories(catRes.data.data);
+      } catch {
+        setUsingStaticData(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  // Unified data: real API or static fallback
+  const products = usingStaticData
+    ? staticProducts
+    : apiProducts.map((p) => ({
+        id: p._id,
+        name: p.name,
+        slug: p.slug,
+        sku: p.sku ?? '',
+        category: p.category?.name ?? '',
+        categorySlug: p.category?.slug ?? '',
+        brand: p.brand ?? '',
+        description: p.shortDescription ?? p.description,
+        image: p.images?.[0]?.url ?? '',
+        inStock: p.inStock,
+        featured: p.featured,
+        tags: p.tags ?? [],
+      }));
+
+  const categories = usingStaticData
+    ? staticCategories
+    : apiCategories.map((c) => ({ id: c._id, name: c.name, slug: c.slug, count: c.productCount ?? 0 }));
+
   const filtered = useMemo(() => {
     return products.filter((p) => {
       const matchesSearch =
@@ -22,27 +71,32 @@ export default function ProductsPage() {
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.description.toLowerCase().includes(search.toLowerCase()) ||
         p.brand.toLowerCase().includes(search.toLowerCase()) ||
-        p.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
+        (p.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()));
 
-      const matchesCategory =
-        !selectedCategory ||
-        p.category.toLowerCase().replace(/\s+/g, '-') === selectedCategory ||
-        p.category.toLowerCase() === selectedCategory;
+      const slug = (p as { categorySlug?: string }).categorySlug ?? p.category.toLowerCase().replace(/\s+/g, '-');
+      const matchesCategory = !selectedCategory || slug === selectedCategory || p.category.toLowerCase() === selectedCategory;
 
       const matchesStock = !inStockOnly || p.inStock;
-
       return matchesSearch && matchesCategory && matchesStock;
     });
-  }, [search, selectedCategory, inStockOnly]);
+  }, [search, selectedCategory, inStockOnly, products]);
 
   const clearFilters = () => {
-    setSearch('');
-    setSelectedCategory('');
-    setInStockOnly(false);
-    setSearchParams({});
+    setSearch(''); setSelectedCategory(''); setInStockOnly(false); setSearchParams({});
   };
-
   const hasFilters = search || selectedCategory || inStockOnly;
+
+  if (loading) {
+    return (
+      <>
+        <title>Products — MediSource Global</title>
+        <PageBanner title="Our Product Portfolio" subtitle="Browse 15,000+ pharmaceutical and medical products." breadcrumbs={[{ label: 'Products' }]} />
+        <div className="flex items-center justify-center py-32">
+          <Loader2 size={36} className="animate-spin text-primary-600" />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -57,7 +111,6 @@ export default function ProductsPage() {
         <div className="container-custom">
           {/* Search & Filter Bar */}
           <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-5 mb-10 flex flex-col md:flex-row gap-4 items-start md:items-center">
-            {/* Search */}
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
@@ -69,19 +122,17 @@ export default function ProductsPage() {
               />
             </div>
 
-            {/* Category Filter */}
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="input-field md:w-52"
             >
               <option value="">All Categories</option>
-              {productCategories.map((cat) => (
+              {categories.map((cat) => (
                 <option key={cat.id} value={cat.slug}>{cat.name}</option>
               ))}
             </select>
 
-            {/* In stock toggle */}
             <label className="flex items-center gap-2 cursor-pointer flex-shrink-0">
               <div
                 onClick={() => setInStockOnly(!inStockOnly)}
@@ -104,15 +155,14 @@ export default function ProductsPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Showing <span className="font-semibold text-gray-900 dark:text-white">{filtered.length}</span> of{' '}
               <span className="font-semibold">{products.length}</span> products
+              {usingStaticData && <span className="ml-2 text-xs text-amber-500">(demo data)</span>}
             </p>
-            {hasFilters && (
+            {hasFilters && selectedCategory && (
               <div className="flex items-center gap-2 flex-wrap">
-                {selectedCategory && (
-                  <span className="badge bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400 flex items-center gap-1">
-                    <Tag size={11} /> {productCategories.find(c => c.slug === selectedCategory)?.name || selectedCategory}
-                    <button onClick={() => setSelectedCategory('')} className="ml-1"><X size={11} /></button>
-                  </span>
-                )}
+                <span className="badge bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400 flex items-center gap-1">
+                  <Tag size={11} /> {categories.find(c => c.slug === selectedCategory)?.name || selectedCategory}
+                  <button onClick={() => setSelectedCategory('')} className="ml-1"><X size={11} /></button>
+                </span>
               </div>
             )}
           </div>
@@ -134,12 +184,12 @@ export default function ProductsPage() {
                   transition={{ delay: Math.min(i * 0.05, 0.4), duration: 0.4 }}
                 >
                   <Link
-                    to={`/products/${product.id}`}
+                    to={`/products/${(product as { slug?: string }).slug ?? product.id}`}
                     className="card group flex flex-col h-full hover:-translate-y-1 transition-all duration-300 block"
                   >
                     <div className="relative overflow-hidden h-48">
                       <img
-                        src={product.image}
+                        src={product.image || `https://picsum.photos/seed/${product.id}/400/300`}
                         alt={product.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />

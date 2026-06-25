@@ -1,7 +1,9 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin, Briefcase, Clock, DollarSign, Calendar, CheckCircle, Star } from 'lucide-react';
-import { jobs } from '@/data/misc';
+import { ArrowLeft, MapPin, Briefcase, Clock, DollarSign, Calendar, CheckCircle, Star, Loader2, Send } from 'lucide-react';
+import { careersApi, type ApiJob } from '@/services/publicApi';
+import { jobs as staticJobs } from '@/data/misc';
 import { ErrorState } from '@/components/shared/StateComponents';
 import PageBanner from '@/components/layout/PageBanner';
 import { formatDateShort } from '@/utils';
@@ -9,9 +11,34 @@ import { formatDateShort } from '@/utils';
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const job = jobs.find((j) => j.id === id);
 
-  if (!job) {
+  const [job, setJob] = useState<ApiJob | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    careersApi.getBySlug(id)
+      .then((res) => setJob(res.data.data))
+      .catch(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const found = (staticJobs as any[]).find((j: any) => j.slug === id || j.id === id);
+        if (found) setJob(found as unknown as ApiJob);
+        else setNotFound(true);
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <>
+        <title>Loading… — MediSource Careers</title>
+        <div className="flex items-center justify-center py-40"><Loader2 size={40} className="animate-spin text-primary-600" /></div>
+      </>
+    );
+  }
+
+  if (notFound || !job) {
     return (
       <ErrorState
         title="Job Not Found"
@@ -20,6 +47,14 @@ export default function JobDetailPage() {
       />
     );
   }
+
+  const salaryDisplay = job.salaryRange
+    ? `${job.salaryRange.currency} ${job.salaryRange.min.toLocaleString()}–${job.salaryRange.max.toLocaleString()} / ${(job.salaryRange as { period?: string }).period ?? 'monthly'}`
+    : null;
+
+  const deadline = job.deadline ?? (job as { applicationDeadline?: string }).applicationDeadline;
+  const postedAt = (job as { postedAt?: string }).postedAt ?? job.createdAt;
+  const experience = job.experience ?? job.experienceLevel;
 
   return (
     <>
@@ -49,52 +84,57 @@ export default function JobDetailPage() {
               </div>
 
               {/* Responsibilities */}
-              <div className="card p-7">
-                <h2 className="font-heading font-bold text-xl text-gray-900 dark:text-white mb-4">Key Responsibilities</h2>
-                <ul className="space-y-3">
-                  {job.responsibilities.map((r, i) => (
-                    <li key={i} className="flex items-start gap-3 text-gray-600 dark:text-gray-400 text-sm">
-                      <CheckCircle size={16} className="text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5" />
-                      {r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {(job.responsibilities ?? []).length > 0 && (
+                <div className="card p-7">
+                  <h2 className="font-heading font-bold text-xl text-gray-900 dark:text-white mb-4">Key Responsibilities</h2>
+                  <ul className="space-y-3">
+                    {(job.responsibilities ?? []).map((r, i) => (
+                      <li key={i} className="flex items-start gap-3 text-gray-600 dark:text-gray-400 text-sm">
+                        <CheckCircle size={16} className="text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Requirements */}
-              <div className="card p-7">
-                <h2 className="font-heading font-bold text-xl text-gray-900 dark:text-white mb-4">Requirements</h2>
-                <ul className="space-y-3">
-                  {job.requirements.map((r, i) => (
-                    <li key={i} className="flex items-start gap-3 text-gray-600 dark:text-gray-400 text-sm">
-                      <Star size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                      {r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {(job.requirements ?? []).length > 0 && (
+                <div className="card p-7">
+                  <h2 className="font-heading font-bold text-xl text-gray-900 dark:text-white mb-4">Requirements</h2>
+                  <ul className="space-y-3">
+                    {(job.requirements ?? []).map((r, i) => (
+                      <li key={i} className="flex items-start gap-3 text-gray-600 dark:text-gray-400 text-sm">
+                        <Star size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Benefits */}
-              <div className="card p-7">
-                <h2 className="font-heading font-bold text-xl text-gray-900 dark:text-white mb-4">What We Offer</h2>
-                <ul className="space-y-3">
-                  {job.benefits.map((b, i) => (
-                    <li key={i} className="flex items-start gap-3 text-gray-600 dark:text-gray-400 text-sm">
-                      <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
-                      {b}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {(job.benefits ?? []).length > 0 && (
+                <div className="card p-7">
+                  <h2 className="font-heading font-bold text-xl text-gray-900 dark:text-white mb-4">What We Offer</h2>
+                  <ul className="space-y-3">
+                    {(job.benefits ?? []).map((b, i) => (
+                      <li key={i} className="flex items-start gap-3 text-gray-600 dark:text-gray-400 text-sm">
+                        <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-              <button onClick={() => navigate(-1)} className="btn-ghost">
+              <button onClick={() => navigate(-1)} className="btn-ghost flex items-center gap-2">
                 <ArrowLeft size={16} /> Back to Careers
               </button>
             </motion.div>
 
             {/* Sidebar */}
             <div className="space-y-5">
-              {/* Job Summary */}
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -104,13 +144,13 @@ export default function JobDetailPage() {
                 <h3 className="font-heading font-semibold text-gray-900 dark:text-white text-lg mb-5">Job Summary</h3>
                 <div className="space-y-4">
                   {[
-                    { icon: MapPin, label: 'Location', value: job.location },
-                    { icon: Briefcase, label: 'Department', value: job.department },
-                    { icon: Clock, label: 'Type', value: job.type.replace('-', ' ') },
-                    { icon: Star, label: 'Experience', value: job.experience },
-                    ...(job.salary ? [{ icon: DollarSign, label: 'Salary', value: job.salary }] : []),
-                    { icon: Calendar, label: 'Posted', value: formatDateShort(job.postedAt) },
-                    ...(job.deadline ? [{ icon: Calendar, label: 'Deadline', value: formatDateShort(job.deadline) }] : []),
+                    { icon: MapPin,      label: 'Location',   value: job.location },
+                    { icon: Briefcase,   label: 'Department', value: job.department },
+                    { icon: Clock,       label: 'Type',       value: job.type.replace(/-/g, ' ') },
+                    ...(experience ? [{ icon: Star, label: 'Experience', value: experience }] : []),
+                    ...(salaryDisplay   ? [{ icon: DollarSign, label: 'Salary', value: salaryDisplay }] : []),
+                    ...(postedAt        ? [{ icon: Calendar,  label: 'Posted',   value: formatDateShort(postedAt) }] : []),
+                    ...(deadline        ? [{ icon: Calendar,  label: 'Deadline', value: formatDateShort(deadline) }] : []),
                   ].map(({ icon: Icon, label, value }) => (
                     <div key={label} className="flex items-start gap-3">
                       <div className="w-8 h-8 bg-primary-50 dark:bg-primary-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -125,7 +165,13 @@ export default function JobDetailPage() {
                 </div>
 
                 <div className="mt-6 pt-5 border-t border-gray-100 dark:border-gray-800 space-y-3">
-                  <button className="btn-primary w-full justify-center">Apply Now</button>
+                  <Link
+                    to="/contact"
+                    state={{ subject: `Application: ${job.title}`, message: `I am applying for the ${job.title} position (${job.department}, ${job.location}).` }}
+                    className="btn-primary w-full justify-center flex items-center gap-2"
+                  >
+                    <Send size={15} /> Apply Now
+                  </Link>
                   <button className="btn-secondary w-full justify-center text-sm py-2.5">Save Job</button>
                 </div>
               </motion.div>

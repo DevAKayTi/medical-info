@@ -32,7 +32,9 @@ export default function ProductsPage() {
           productsApi.getCategories(),
         ]);
         setApiProducts(prodRes.data.data);
-        setApiCategories(catRes.data.data);
+        // categories endpoint returns { data: [...] } (array directly)
+        const cats = catRes.data.data ?? catRes.data as unknown as ApiCategory[];
+        setApiCategories(Array.isArray(cats) ? cats : []);
       } catch {
         setUsingStaticData(true);
       } finally {
@@ -45,20 +47,26 @@ export default function ProductsPage() {
   // Unified data: real API or static fallback
   const products = usingStaticData
     ? staticProducts
-    : apiProducts.map((p) => ({
-        id: p._id,
-        name: p.name,
-        slug: p.slug,
-        sku: p.sku ?? '',
-        category: p.category?.name ?? '',
-        categorySlug: p.category?.slug ?? '',
-        brand: p.brand ?? '',
-        description: p.shortDescription ?? p.description,
-        image: p.images?.[0]?.url ?? '',
-        inStock: p.inStock,
-        featured: p.featured,
-        tags: p.tags ?? [],
-      }));
+    : apiProducts.map((p) => {
+        // brand may be a populated object or a string ID
+        const brandName = typeof p.brand === 'object' && p.brand !== null
+          ? (p.brand as { name: string }).name
+          : '';
+        return {
+          id: p._id,
+          name: p.name,
+          slug: p.slug,
+          sku: p.sku ?? '',
+          category: p.category?.name ?? '',
+          categorySlug: p.category?.slug ?? '',
+          brand: brandName,
+          description: p.shortDescription ?? p.description,
+          image: p.images?.find(i => i.isPrimary)?.url ?? p.images?.[0]?.url ?? '',
+          inStock: p.inStock,
+          featured: p.featured,
+          tags: p.tags ?? [],
+        };
+      });
 
   const categories = usingStaticData
     ? staticCategories

@@ -12,13 +12,13 @@ export interface ApiProduct {
   description: string;
   shortDescription?: string;
   category?: { _id: string; name: string; slug: string };
-  brand?: string;
-  images?: { url: string; alt?: string }[];
+  brand?: { _id: string; name: string; slug?: string; logo?: { url: string } } | string;
+  images?: { url: string; publicId?: string; isPrimary?: boolean }[];
   inStock: boolean;
   featured: boolean;
   status: string;
   tags?: string[];
-  specifications?: { key: string; value: string }[];
+  specifications?: { label: string; value: string }[];
   createdAt: string;
 }
 
@@ -55,15 +55,18 @@ export interface ApiJob {
   department: string;
   location: string;
   type: string;
-  experienceLevel?: string;
-  salaryRange?: { min: number; max: number; currency: string };
+  experience?: string;
+  experienceLevel?: string;  // alias — API returns 'experience'
+  salaryRange?: { min: number; max: number; currency: string; period?: string };
   description: string;
   responsibilities?: string[];
   requirements?: string[];
   benefits?: string[];
   status: string;
-  featured: boolean;
+  featured?: boolean;
   applicationDeadline?: string;
+  deadline?: string;
+  postedAt?: string;
   createdAt: string;
 }
 

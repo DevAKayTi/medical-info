@@ -49,10 +49,10 @@ export default function CareersPage() {
         department: j.department,
         location: j.location,
         type: j.type,
-        experience: j.experienceLevel ?? '',
-        featured: j.featured,
-        postedAt: j.createdAt,
-        deadline: j.applicationDeadline,
+        experience: j.experience ?? j.experienceLevel ?? '',
+        featured: j.featured ?? false,
+        postedAt: j.postedAt ?? j.createdAt,
+        deadline: j.deadline ?? j.applicationDeadline,
       }));
 
   const filtered = useMemo(() => jobs.filter((j) => {
